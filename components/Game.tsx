@@ -5,12 +5,13 @@ import { GameState, MazeSizeConfig } from '../types';
 
 interface GameProps {
   config: MazeSizeConfig;
+  onBack?: () => void;
 }
 
-export const Game: React.FC<GameProps> = ({ config }) => {
+export const Game: React.FC<GameProps> = ({ config, onBack }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<InputState>({ x: 0, z: 0 });
-  const [gameState, setGameState] = useState<GameState>({ score: 0, distance: 0 });
+  const [gameState, setGameState] = useState<GameState>({ distance: 0 });
 
   useEffect(() => {
     const el = containerRef.current;
@@ -32,7 +33,7 @@ export const Game: React.FC<GameProps> = ({ config }) => {
   return (
     <div className="game-container">
       <div ref={containerRef} className="canvas-container" />
-      <HUD gameState={gameState} onJoystick={handleJoystick} />
+      <HUD gameState={gameState} onJoystick={handleJoystick} onBack={onBack} />
     </div>
   );
 };

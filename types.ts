@@ -1,5 +1,4 @@
 export interface GameState {
-  score: number;
   distance: number;
 }
 

@@ -80,6 +80,312 @@ function makeVegMat(props: any): any {
   return mat;
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  Procedural Grass — Bezier blade + wind + ball interaction
+//  Inspired by procedural-grass-threejs, adapted for r150 / WebGL
+// ═══════════════════════════════════════════════════════════════════
+
+function createBladeGeometry(segments = 3, width = 0.045, height = 0.14, curvature = 0.12): any {
+  const vertCount = (segments + 1) * 2 + 1;
+  const pos = new Float32Array(vertCount * 3);
+  const uvs = new Float32Array(vertCount * 2);
+  const idx: number[] = [];
+
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const bx = 2 * (1 - t) * t * curvature;
+    const by = t * height;
+    const w = width * (1 - t * 0.85);
+    const vi = i * 2;
+    pos[vi * 3]     = bx - w * 0.5;
+    pos[vi * 3 + 1] = by;
+    pos[vi * 3 + 2] = 0;
+    uvs[vi * 2]     = 0;
+    uvs[vi * 2 + 1] = t;
+    pos[(vi+1) * 3]     = bx + w * 0.5;
+    pos[(vi+1) * 3 + 1] = by;
+    pos[(vi+1) * 3 + 2] = 0;
+    uvs[(vi+1) * 2]     = 1;
+    uvs[(vi+1) * 2 + 1] = t;
+  }
+  const tipIdx = (segments + 1) * 2;
+  pos[tipIdx * 3]     = curvature * 0.5;
+  pos[tipIdx * 3 + 1] = height;
+  pos[tipIdx * 3 + 2] = 0;
+  uvs[tipIdx * 2]     = 0.5;
+  uvs[tipIdx * 2 + 1] = 1.0;
+
+  for (let i = 0; i < segments; i++) {
+    const a = i*2, b = i*2+1, c = (i+1)*2, d = (i+1)*2+1;
+    idx.push(a, b, c, b, d, c);
+  }
+  idx.push(segments*2, segments*2+1, tipIdx);
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+let _bladeGeo: any = null;
+function _getBladeGeo(): any {
+  if (!_bladeGeo) _bladeGeo = createBladeGeometry();
+  return _bladeGeo;
+}
+
+// ─── GLSL Vertex Shader ──────────────────────────────────────────
+const GRASS_VERT = `
+// Per-instance
+attribute vec4 aPositionRotation; // xyz=worldPos, w=Yrotation
+attribute vec4 aScaleVariation;   // x=scaleX, y=scaleY, z=tilt, w=colorVar
+
+// Wind
+uniform float windTime;
+uniform vec2  windDir;
+uniform float windBase;
+uniform float windGust;
+uniform float windGustFreq;
+
+// Interaction
+uniform vec3  uPushPos;
+uniform float uPushRadius;
+
+varying vec2  vUv;
+varying vec3  vWorldPos;
+varying float vColorVar;
+
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+float noise2D(vec2 p) {
+  vec2 i = floor(p); vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash(i), b = hash(i + vec2(1,0)),
+        c = hash(i + vec2(0,1)), d = hash(i + vec2(1,1));
+  return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
+}
+
+vec3 computeWind(vec3 wp, float hf) {
+  float gp = dot(wp.xz, windDir) * 0.5 + windTime * 1.2;
+  vec2 gs = windDir * sin(gp) * windBase;
+  float gup = dot(wp.xz, windDir) * windGustFreq + windTime * 2.5;
+  float ge = smoothstep(0.3, 0.7, noise2D(wp.xz * 0.02 + windTime * 0.3));
+  vec2 gus = windDir * sin(gup) * windGust * ge;
+  float bh = hash(wp.xz * 10.0);
+  float tp = windTime * 3.0 + bh * 6.28;
+  vec2 turb = vec2(sin(tp), cos(tp * 0.7)) * 0.08;
+  float h2 = hf * hf;
+  vec2 total = (gs + gus + turb);
+  return vec3(total.x, 0.0, total.y) * h2;
+}
+
+vec3 computePush(vec3 wp, float hf) {
+  if (uPushRadius <= 0.0) return vec3(0.0);
+  vec3 delta = wp - uPushPos;
+  delta.y = 0.0;
+  float dist = length(delta);
+  if (dist >= uPushRadius || dist < 0.001) return vec3(0.0);
+  float strength = 1.0 - smoothstep(0.0, uPushRadius, dist);
+  strength *= strength;
+  return normalize(delta) * strength * 1.5 * hf * hf;
+}
+
+void main() {
+  vUv = uv;
+  vColorVar = aScaleVariation.w;
+
+  vec3 p = position;
+  p.x *= aScaleVariation.x;
+  p.y *= aScaleVariation.y;
+
+  // Tilt
+  float ti = aScaleVariation.z;
+  float cT = cos(ti), sT = sin(ti);
+  float ty = p.y * cT - p.z * sT;
+  float tz = p.y * sT + p.z * cT;
+  p.y = ty; p.z = tz;
+
+  // Y rotation
+  float rot = aPositionRotation.w;
+  float cR = cos(rot), sR = sin(rot);
+  vec3 r;
+  r.x = p.x * cR - p.z * sR;
+  r.y = p.y;
+  r.z = p.x * sR + p.z * cR;
+
+  vec3 wp = r + aPositionRotation.xyz;
+  float hf = uv.y;
+  wp += computeWind(wp, hf) + computePush(wp, hf);
+  vWorldPos = wp;
+
+  gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
+}
+`;
+
+// ─── GLSL Fragment Shader ────────────────────────────────────────
+const GRASS_FRAG = `
+precision highp float;
+
+uniform vec3  uBaseColor;
+uniform vec3  uTipColor;
+uniform vec3  uDryColor;
+uniform float uDryAmount;
+uniform float uSssStrength;
+uniform float uAoStrength;
+uniform vec3  uSunDir;
+uniform vec3  uSunColor;
+uniform vec3  uAmbientColor;
+uniform vec3  uBallFadeCenter;
+uniform float uBallFadeStart;
+uniform float uBallFadeEnd;
+
+varying vec2  vUv;
+varying vec3  vWorldPos;
+varying float vColorVar;
+
+void main() {
+  // Ball-distance dither fade
+  float distB = length(vWorldPos.xz - uBallFadeCenter.xz);
+  float fade = 1.0 - smoothstep(uBallFadeStart, uBallFadeEnd, distB);
+  float pattern = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+  if (pattern > fade) discard;
+
+  float ht = vUv.y;
+  vec3 col = mix(uBaseColor, uTipColor, ht);
+  col = mix(col, uDryColor, vColorVar * uDryAmount);
+  col *= 1.0 + (vColorVar - 0.5) * 0.15;
+
+  // Root AO
+  float ao = mix(1.0 - uAoStrength, 1.0, smoothstep(0.0, 0.3, ht));
+  col *= ao;
+
+  // Lighting
+  vec3 L = normalize(uSunDir);
+  vec3 V = normalize(cameraPosition - vWorldPos);
+  float diffuse = max(dot(vec3(0.0,1.0,0.0), L) * 0.5 + 0.5, 0.0);
+
+  // SSS backlit glow
+  float sss = pow(max(dot(-V, L), 0.0), 3.0) * uSssStrength * ht;
+
+  vec3 lit = col * (uSunColor * diffuse + uAmbientColor * 0.5) + uSunColor * sss;
+  gl_FragColor = vec4(lit, 1.0);
+}
+`;
+
+// ─── Shared grass uniform objects ────────────────────────────────
+// All grass ShaderMaterials share these references — update once per frame
+const _gu = {
+  uBaseColor:     { value: null as any },
+  uTipColor:      { value: null as any },
+  uDryColor:      { value: null as any },
+  uDryAmount:     { value: 0.15 },
+  uSssStrength:   { value: 0.45 },
+  uAoStrength:    { value: 0.6 },
+  uSunDir:        { value: null as any },
+  uSunColor:      { value: null as any },
+  uAmbientColor:  { value: null as any },
+  windTime:       { value: 0 },
+  windDir:        { value: null as any },
+  windBase:       { value: 0.12 },
+  windGust:       { value: 0.22 },
+  windGustFreq:   { value: 0.3 },
+  uPushPos:       { value: null as any },
+  uPushRadius:    { value: 0 },
+  uBallFadeCenter:{ value: null as any },
+  uBallFadeStart: { value: 999 },
+  uBallFadeEnd:   { value: 1000 },
+};
+
+let _guInitialized = false;
+function _initGU(): void {
+  if (_guInitialized) return;
+  _gu.uBaseColor.value = new THREE.Color(0x1a3d12);
+  _gu.uTipColor.value = new THREE.Color(0x4a7a30);
+  _gu.uDryColor.value = new THREE.Color(0x8b7040);
+  _gu.uSunDir.value = new THREE.Vector3(1, 0.8, -0.6).normalize();
+  _gu.uSunColor.value = new THREE.Color(0xffaa55);
+  _gu.uAmbientColor.value = new THREE.Color(0x887766);
+  _gu.windDir.value = new THREE.Vector2(0.8, 0.3).normalize();
+  _gu.uPushPos.value = new THREE.Vector3();
+  _gu.uBallFadeCenter.value = new THREE.Vector3();
+  _guInitialized = true;
+}
+
+function _getGrassMat(): any {
+  _initGU();
+  return new THREE.ShaderMaterial({
+    uniforms: _gu,
+    vertexShader: GRASS_VERT,
+    fragmentShader: GRASS_FRAG,
+    side: THREE.DoubleSide,
+    depthWrite: true,
+    transparent: false,
+  });
+}
+
+/** Call each frame to animate grass wind and interaction */
+export function updateGrassUniforms(dt: number, camPosVec?: any, ballPosVec?: any, pushRadius?: number): void {
+  _initGU();
+  _gu.windTime.value += dt;
+  if (ballPosVec) {
+    _gu.uPushPos.value.copy(ballPosVec);
+    _gu.uPushRadius.value = pushRadius ?? 0;
+    _gu.uBallFadeCenter.value.copy(ballPosVec);
+  }
+}
+
+/** Set the ball-distance fade (game mode) */
+export function setGrassBallFade(start: number, end: number): void {
+  _initGU();
+  _gu.uBallFadeStart.value = start;
+  _gu.uBallFadeEnd.value = end;
+}
+
+/** Reset for scene transitions (menu ↔ game) */
+export function resetGrassSystem(): void {
+  _gu.windTime.value = 0;
+  _gu.uPushRadius.value = 0;
+  _gu.uBallFadeStart.value = 999;
+  _gu.uBallFadeEnd.value = 1000;
+}
+
+/** Internal: build an instanced grass mesh from GrassPos[] */
+function _buildGrassIM(positions: GrassPos[]): any | null {
+  if (positions.length === 0) return null;
+  _initGU();
+
+  const n = positions.length;
+  const posRot = new Float32Array(n * 4);
+  const scaleVar = new Float32Array(n * 4);
+
+  for (let i = 0; i < n; i++) {
+    const p = positions[i];
+    posRot[i*4]   = p.x;
+    posRot[i*4+1] = 0.01;
+    posRot[i*4+2] = p.z;
+    posRot[i*4+3] = p.ry;
+    scaleVar[i*4]   = 0.8 + Math.random() * 0.4;
+    scaleVar[i*4+1] = p.s;
+    scaleVar[i*4+2] = (Math.random() - 0.5) * 0.25;
+    scaleVar[i*4+3] = Math.random();
+  }
+
+  const base = _getBladeGeo();
+  const ibg = new THREE.InstancedBufferGeometry();
+  ibg.index = base.index;
+  ibg.setAttribute('position', base.getAttribute('position'));
+  ibg.setAttribute('uv', base.getAttribute('uv'));
+  ibg.setAttribute('normal', base.getAttribute('normal'));
+  ibg.setAttribute('aPositionRotation', new THREE.InstancedBufferAttribute(posRot, 4));
+  ibg.setAttribute('aScaleVariation', new THREE.InstancedBufferAttribute(scaleVar, 4));
+
+  const mesh = new THREE.Mesh(ibg, _getGrassMat());
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
 // ─── Vector helpers ──────────────────────────────────────────────
 interface V { x: number; y: number; z: number; }
 
@@ -717,42 +1023,8 @@ function computeGrassPositions(maze: number[][], mazeW: number, mazeH: number): 
 }
 
 function buildGrassMeshes(positions: GrassPos[], scene: any): void {
-  if (positions.length === 0) return;
-
-  const geo = new THREE.BufferGeometry();
-  const verts = new Float32Array([-0.02, 0, 0, 0.02, 0, 0, 0, 0.12, 0]);
-  geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
-  geo.computeVertexNormals();
-
-  // Keep DoubleSide for grass — each blade is 1 triangle, overhead is negligible
-  const mat = makeVegMat({
-    color: 0xffffff,
-    side: THREE.DoubleSide,
-    roughness: 0.9,
-  });
-
-  const mesh = new THREE.InstancedMesh(geo, mat, positions.length);
-  const obj = new THREE.Object3D();
-  for (let i = 0; i < positions.length; i++) {
-    const p = positions[i];
-    obj.position.set(p.x, 0.01, p.z);
-    obj.rotation.set(0, p.ry, 0);
-    obj.scale.setScalar(p.s);
-    obj.updateMatrix();
-    mesh.setMatrixAt(i, obj.matrix);
-
-    const c = new THREE.Color();
-    c.setHSL(
-      0.25 + Math.random() * 0.08,
-      0.5 + Math.random() * 0.25,
-      0.2 + Math.random() * 0.12
-    );
-    mesh.setColorAt(i, c);
-  }
-
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  scene.add(mesh);
+  const mesh = _buildGrassIM(positions);
+  if (mesh) scene.add(mesh);
 }
 
 export function addGrass(
@@ -1358,31 +1630,5 @@ export function buildScatterLeavesDirectional(
 
 /** Build grass mesh and return it (does NOT add to scene) */
 export function buildGrassMeshReturn(positions: GrassPos[]): any | null {
-  if (positions.length === 0) return null;
-
-  const geo = new THREE.BufferGeometry();
-  const verts = new Float32Array([-0.02, 0, 0, 0.02, 0, 0, 0, 0.12, 0]);
-  geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
-  geo.computeVertexNormals();
-
-  const mat = makeVegMat({
-    color: 0xffffff, side: THREE.DoubleSide, roughness: 0.9,
-  });
-
-  const mesh = new THREE.InstancedMesh(geo, mat, positions.length);
-  const obj = new THREE.Object3D();
-  for (let i = 0; i < positions.length; i++) {
-    const p = positions[i];
-    obj.position.set(p.x, 0.01, p.z);
-    obj.rotation.set(0, p.ry, 0);
-    obj.scale.setScalar(p.s);
-    obj.updateMatrix();
-    mesh.setMatrixAt(i, obj.matrix);
-    const c = new THREE.Color();
-    c.setHSL(0.25 + Math.random() * 0.08, 0.5 + Math.random() * 0.25, 0.2 + Math.random() * 0.12);
-    mesh.setColorAt(i, c);
-  }
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  return mesh;
+  return _buildGrassIM(positions);
 }

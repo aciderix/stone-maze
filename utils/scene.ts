@@ -3,7 +3,7 @@ declare const THREE: any;
 import { GameState, MazeSizeConfig } from '../types';
 import { generateMaze, getOpenCells } from './maze';
 import { createStoneWallTexture, createFloorTexture, createBallTexture } from './textures';
-import { addMenuIvy, addMenuGrass, simulateIvyForRegion, buildIvyMeshesDirectional, buildScatterLeavesDirectional, computeGrassInRegion, buildGrassMeshReturn, DirectionalMeshGroup } from './vegetation';
+import { addMenuIvy, simulateIvyForRegion, buildIvyMeshesDirectional, buildScatterLeavesDirectional, DirectionalMeshGroup } from './vegetation';
 import { MENU_MAZE } from './menuMazeData';
 import { setVegBallPos } from './vegetation';
 
@@ -151,7 +151,7 @@ export function createMenuScene(container: HTMLDivElement): () => void {
   buildWalls(scene, maze, mW, mH, uBallPos);
   buildFloor(scene, mW, mH);
   addMenuIvy(scene, maze, mW, mH, WALL_HEIGHT);   // Cached + seeded
-  addMenuGrass(scene, maze, mW, mH);               // Cached + seeded
+
 
   const centerX = (mW - 1) / 2;
   const centerZ = (mH - 1) / 2;
@@ -307,10 +307,6 @@ export function createScene(
           vc.posZ = dir.posZ; vc.negZ = dir.negZ;
           for (const m of [...vc.top, ...vc.posX, ...vc.negX, ...vc.posZ, ...vc.negZ]) scene.add(m);
 
-          const grassPos = computeGrassInRegion(maze, mazeW, mazeH, cx, cz, eX, eZ);
-          const grassMesh = buildGrassMeshReturn(grassPos);
-          if (grassMesh) { scene.add(grassMesh); vc.ground = [grassMesh]; }
-
           vc.state = 'full';
         }
 
@@ -330,11 +326,8 @@ export function createScene(
   scene.add(ball);
 
   const vel = { x: 0, z: 0 };
-  const coins = buildCoins(scene, maze, config.coins);
 
-  let score = 0;
   let distance = 0;
-  let lastScore = -1;
   let lastDist = -1;
   let lastTime = performance.now();
   let animId = 0;
@@ -499,21 +492,6 @@ export function createScene(
     const spd = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
     distance += spd * dt;
 
-    // Coins
-    const t = now * 0.001;
-    for (let i = coins.length - 1; i >= 0; i--) {
-      const c = coins[i];
-      c.rotation.y += dt * 2.5;
-      c.position.y = 0.55 + Math.sin(t * 2 + c.position.x + c.position.z) * 0.06;
-      const cdx = ball.position.x - c.position.x;
-      const cdz = ball.position.z - c.position.z;
-      if (cdx * cdx + cdz * cdz < 0.35 * 0.35) {
-        scene.remove(c);
-        coins.splice(i, 1);
-        score += 10;
-      }
-    }
-
     // ─── Frustum update (once per frame) ───
     camera.updateMatrixWorld();
     _projMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
@@ -596,9 +574,6 @@ export function createScene(
             vc.top = dir.top; vc.posX = dir.posX; vc.negX = dir.negX;
             vc.posZ = dir.posZ; vc.negZ = dir.negZ;
             for (const m of [...vc.top, ...vc.posX, ...vc.negX, ...vc.posZ, ...vc.negZ]) scene.add(m);
-            const grassPos = computeGrassInRegion(maze, mazeW, mazeH, vc.startX, vc.startZ, vc.endX, vc.endZ);
-            const grassMesh = buildGrassMeshReturn(grassPos);
-            if (grassMesh) { scene.add(grassMesh); vc.ground = [grassMesh]; }
             vc.state = 'full';
             heavyGenCount++;
           } else if (vdist < VEG_ZONE2_DIST && vc.state === 'none') {
@@ -660,10 +635,9 @@ export function createScene(
     sun.target.position.set(ball.position.x, 0, ball.position.z);
 
     const curDist = Math.floor(distance);
-    if (score !== lastScore || curDist !== lastDist) {
-      lastScore = score;
+    if (curDist !== lastDist) {
       lastDist = curDist;
-      onStateUpdate({ score, distance: curDist });
+      onStateUpdate({ distance: curDist });
     }
 
     renderer.render(scene, camera);

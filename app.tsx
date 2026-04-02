@@ -18,7 +18,7 @@ const App: React.FC = () => {
       />
     );
   }
-  return <Game config={MAZE_CONFIGS[sizeId]} />;
+  return <Game config={MAZE_CONFIGS[sizeId]} onBack={() => setScreen('menu')} />;
 };
 
 createRoot(document.getElementById('root')!).render(<App />);

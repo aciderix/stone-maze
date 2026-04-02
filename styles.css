@@ -194,61 +194,143 @@ body,
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
 }
 
-.hud-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 16px;
-}
-
-.hud-score {
-  pointer-events: auto;
-  background: linear-gradient(145deg, #4a4035, #3a3530);
-  border: 2px solid #6a5d4d;
-  border-radius: 14px;
-  padding: 8px 18px;
+/* ─── Bottom bar: [pause] [joystick] [distance] ─── */
+.hud-bottom {
+  position: absolute;
+  bottom: 20px;
+  left: 0;
+  right: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 22px;
-  font-weight: bold;
-  color: #ffd700;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  justify-content: center;
+  gap: 20px;
+  padding: 0 20px;
 }
 
-.coin-icon {
-  font-size: 26px;
-}
-
-.hud-distance {
+/* ─── Pause button (stone DA, discreet) ─── */
+.hud-pause-btn {
   pointer-events: auto;
-  background: linear-gradient(145deg, #4a4035, #3a3530);
-  border: 2px solid #6a5d4d;
-  border-radius: 14px;
-  padding: 8px 18px;
-  font-size: 13px;
-  color: #cdc0b0;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
-  letter-spacing: 1.5px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 2px solid #a89070;
+  background: linear-gradient(180deg, #8a7656, #5a4a36);
+  color: #ffeedd;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.hud-distance strong {
-  font-size: 24px;
-  color: #fff;
-  margin: 0 4px;
+.hud-pause-btn:hover {
+  transform: translateY(-1px);
+  background: linear-gradient(180deg, #9a8666, #6a5a46);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
-.joystick-area {
+.hud-pause-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* ─── Distance (stone DA, compact) ─── */
+.hud-distance-compact {
+  pointer-events: none;
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  flex-shrink: 0;
+  min-width: 60px;
+  background: linear-gradient(180deg, #8a7656, #5a4a36);
+  border: 2px solid #a89070;
+  border-radius: 12px;
+  padding: 6px 14px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.dist-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffeedd;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.dist-unit {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffd699;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  letter-spacing: 1px;
+}
+
+/* ─── Pause modal overlay ─── */
+.pause-overlay {
+  pointer-events: auto;
   position: absolute;
-  bottom: 28px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.pause-modal {
+  background: linear-gradient(180deg, #8a7656, #5a4a36);
+  border: 3px solid #a89070;
+  border-radius: 16px;
+  padding: 28px 36px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 220px;
+  align-items: center;
+}
+
+.pause-modal-btn {
   pointer-events: auto;
+  background: linear-gradient(180deg, #9a8666, #6a5a46);
+  border: 2px solid #a89070;
+  border-radius: 12px;
+  padding: 14px 28px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffeedd;
+  letter-spacing: 2px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+  font-family: inherit;
+  width: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pause-modal-btn:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(180deg, #aa9676, #7a6a56);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.pause-modal-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .joystick-base {
+  pointer-events: auto;
   width: 130px;
   height: 130px;
   border-radius: 50%;
