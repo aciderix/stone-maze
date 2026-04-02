@@ -5,6 +5,7 @@ import { generateMaze, getOpenCells } from './maze';
 import { createStoneWallTexture, createFloorTexture, createBallTexture } from './textures';
 import { addMenuIvy, addMenuGrass, simulateIvyForRegion, buildIvyMeshesDirectional, buildScatterLeavesDirectional, computeGrassInRegion, buildGrassMeshReturn, DirectionalMeshGroup } from './vegetation';
 import { MENU_MAZE } from './menuMazeData';
+import { setVegBallPos } from './vegetation';
 
 // ─── Constants ───
 const WALL_HEIGHT = 1.8;
@@ -146,6 +147,7 @@ export function createMenuScene(container: HTMLDivElement): () => void {
   const mW = maze[0].length;
 
   const uBallPos = { value: new THREE.Vector3(0, 0, 0) };
+  setVegBallPos(uBallPos);
   buildWalls(scene, maze, mW, mH, uBallPos);
   buildFloor(scene, mW, mH);
   addMenuIvy(scene, maze, mW, mH, WALL_HEIGHT);   // Cached + seeded
@@ -268,6 +270,7 @@ export function createScene(
 
   // ─── Walls ───
   const uBallPos = { value: new THREE.Vector3(1, BALL_RADIUS, 1) };
+  setVegBallPos(uBallPos);
 
   let wallData: WallData | null = null;
   let wallChunks: ChunkWallData[] | null = null;

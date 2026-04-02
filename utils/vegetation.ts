@@ -10,6 +10,76 @@ declare const THREE: any;
 //    • Seeded PRNG + cached simulation for deterministic menu
 // ═══════════════════════════════════════════════════════════════════
 
+// ─── Ball-position dissolve for vegetation ─────────────────────
+let _uBallPos: { value: any } | null = null;
+export function setVegBallPos(u: { value: any }) { _uBallPos = u; }
+
+function applyVegDissolve(mat: any) {
+  if (!_uBallPos) return;
+  const uBP = _uBallPos;
+  mat.onBeforeCompile = (shader: any) => {
+    shader.uniforms.uBallPos = uBP;
+    // ── Vertex: pass world position + world normal per instance ──
+    shader.vertexShader = shader.vertexShader.replace(
+      'void main() {',
+      'varying vec3 vVegWorldPos;\nvarying vec3 vVegNormal;\nvoid main() {'
+    );
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <worldpos_vertex>',
+      `#include <worldpos_vertex>
+#ifdef USE_INSTANCING
+vVegWorldPos = (modelMatrix * instanceMatrix * vec4(position, 1.0)).xyz;
+vVegNormal = normalize((modelMatrix * instanceMatrix * vec4(normal, 0.0)).xyz);
+#else
+vVegWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+vVegNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+#endif`
+    );
+    // ── Fragment: dissolve with skipDissolve rule (same as walls) ──
+    shader.fragmentShader = shader.fragmentShader.replace(
+      'void main() {',
+      'uniform vec3 uBallPos;\nvarying vec3 vVegWorldPos;\nvarying vec3 vVegNormal;\nvoid main() {'
+    );
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <dithering_fragment>',
+      `#include <dithering_fragment>
+// ── skipDissolve: same rule as walls ──
+// Vegetation on corridor walls facing the camera near the ball → keep visible
+vec3 toBall = normalize(uBallPos - vVegWorldPos);
+vec3 toCam  = normalize(cameraPosition - vVegWorldPos);
+float distToBall = length(vVegWorldPos - uBallPos);
+bool isVerticalFace = abs(vVegNormal.y) < 0.3;
+bool skipDissolve = false;
+if (isVerticalFace && dot(vVegNormal, toBall) > 0.0 && dot(vVegNormal, toCam) > 0.0 && distToBall < 3.5) {
+  skipDissolve = true;
+}
+if (!skipDissolve) {
+  vec3 rvec = uBallPos - cameraPosition;
+  float rlen = length(rvec);
+  vec3 rdir = rvec / max(rlen, 0.001);
+  float t = dot(vVegWorldPos - cameraPosition, rdir);
+  vec3 closest = cameraPosition + rdir * clamp(t, 0.0, rlen);
+  float d = length(vVegWorldPos - closest);
+  float coreR = 0.3;
+  float edgeR = 1.0;
+  if (d < coreR) {
+    discard;
+  } else if (d < edgeR) {
+    float dissolve = 1.0 - smoothstep(coreR, edgeR, d);
+    float pat = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+    if (pat < dissolve) discard;
+  }
+}`
+    );
+  };
+}
+
+function makeVegMat(props: any): any {
+  const mat = new THREE.MeshStandardMaterial(props);
+  applyVegDissolve(mat);
+  return mat;
+}
+
 // ─── Vector helpers ──────────────────────────────────────────────
 interface V { x: number; y: number; z: number; }
 
@@ -471,7 +541,7 @@ function buildIvyMeshes(roots: IvyRoot[], scene: any): void {
 
   // ── Build leaf InstancedMesh ──
   if (leafData.length > 0) {
-    const mat = new THREE.MeshStandardMaterial({
+    const mat = makeVegMat({
       color: 0xffffff,
       side: THREE.FrontSide,   // ← Half the fragment work vs DoubleSide
       roughness: 0.82,
@@ -524,7 +594,7 @@ function buildIvyMeshes(roots: IvyRoot[], scene: any): void {
   if (segs.length > 0) {
     // Triangular cross-section, no caps, open-ended → 6 tris instead of ~16
     const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 3, 1, true);
-    const brMat = new THREE.MeshStandardMaterial({
+    const brMat = makeVegMat({
       color: 0x3d2b1f,
       roughness: 0.9,
       metalness: 0.05,
@@ -655,7 +725,7 @@ function buildGrassMeshes(positions: GrassPos[], scene: any): void {
   geo.computeVertexNormals();
 
   // Keep DoubleSide for grass — each blade is 1 triangle, overhead is negligible
-  const mat = new THREE.MeshStandardMaterial({
+  const mat = makeVegMat({
     color: 0xffffff,
     side: THREE.DoubleSide,
     roughness: 0.9,
@@ -840,7 +910,7 @@ export function buildIvyMeshesReturn(roots: any[]): any[] {
   }
 
   if (leafData.length > 0) {
-    const mat = new THREE.MeshStandardMaterial({
+    const mat = makeVegMat({
       color: 0xffffff, side: THREE.FrontSide, roughness: 0.82,
     });
     const mesh = new THREE.InstancedMesh(leafGeo, mat, leafData.length);
@@ -876,7 +946,7 @@ export function buildIvyMeshesReturn(roots: any[]): any[] {
 
   if (segs.length > 0) {
     const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 3, 1, true);
-    const brMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 0.9, metalness: 0.05 });
+    const brMat = makeVegMat({ color: 0x3d2b1f, roughness: 0.9, metalness: 0.05 });
     const brMesh = new THREE.InstancedMesh(cylGeo, brMat, segs.length);
     brMesh.castShadow = true;
     const up = new THREE.Vector3(0, 1, 0);
@@ -949,7 +1019,7 @@ export function buildScatterLeavesReturn(
   if (instances.length === 0) return null;
 
   const leafGeo = new THREE.PlaneGeometry(0.1, 0.14);
-  const mat = new THREE.MeshStandardMaterial({
+  const mat = makeVegMat({
     color: 0xffffff, side: THREE.FrontSide, roughness: 0.82,
   });
   const mesh = new THREE.InstancedMesh(leafGeo, mat, instances.length);
@@ -1139,7 +1209,7 @@ export function buildIvyMeshesDirectional(roots: any[], wallHeight: number): Dir
   for (const dir of FACE_DIRS) {
     const ld = leafBuckets[dir];
     if (ld.length > 0) {
-      const mat = new THREE.MeshStandardMaterial({
+      const mat = makeVegMat({
         color: 0xffffff, side: THREE.FrontSide, roughness: 0.82,
       });
       const mesh = new THREE.InstancedMesh(leafGeo, mat, ld.length);
@@ -1163,7 +1233,7 @@ export function buildIvyMeshesDirectional(roots: any[], wallHeight: number): Dir
 
     const bd = branchBuckets[dir];
     if (bd.length > 0) {
-      const brMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 0.9, metalness: 0.05 });
+      const brMat = makeVegMat({ color: 0x3d2b1f, roughness: 0.9, metalness: 0.05 });
       const brMesh = new THREE.InstancedMesh(cylGeo, brMat, bd.length);
       brMesh.castShadow = true;
       const up = new THREE.Vector3(0, 1, 0);
@@ -1248,7 +1318,7 @@ export function buildScatterLeavesDirectional(
   for (const dir of FACE_DIRS) {
     const instances = buckets[dir];
     if (instances.length === 0) continue;
-    const mat = new THREE.MeshStandardMaterial({
+    const mat = makeVegMat({
       color: 0xffffff, side: THREE.FrontSide, roughness: 0.82,
     });
     const mesh = new THREE.InstancedMesh(leafGeo, mat, instances.length);
@@ -1295,7 +1365,7 @@ export function buildGrassMeshReturn(positions: GrassPos[]): any | null {
   geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
   geo.computeVertexNormals();
 
-  const mat = new THREE.MeshStandardMaterial({
+  const mat = makeVegMat({
     color: 0xffffff, side: THREE.DoubleSide, roughness: 0.9,
   });
 
