@@ -1,0 +1,8 @@
+{
+  "name": "stone-maze",
+  "displayName": "Stone Maze",
+  "description": "Jeu de labyrinthe 3D avec murs en pierre vieillie, végétation, et une boule de pierre à guider",
+  "scripts": [
+    "https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js"
+  ]
+}

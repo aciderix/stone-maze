@@ -1,0 +1,283 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+}
+
+/* ─── Main Menu ─── */
+
+.menu-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.menu-bg {
+  width: 100%;
+  height: 100%;
+}
+
+.menu-bg canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.menu-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.45) 100%);
+}
+
+.menu-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.menu-title {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 72px;
+  font-weight: 900;
+  color: #ffd699;
+  text-shadow:
+    0 2px 0 #8a6d3b,
+    0 4px 0 #6a5029,
+    0 6px 16px rgba(0,0,0,0.7);
+  letter-spacing: 12px;
+  line-height: 1;
+  margin: 0;
+}
+
+.menu-title-sub {
+  font-size: 84px;
+  letter-spacing: 18px;
+  color: #ffe8c4;
+  margin-bottom: 50px;
+}
+
+.menu-btn {
+  background: linear-gradient(180deg, #8a7656, #5a4a36);
+  border: 3px solid #a89070;
+  border-radius: 16px;
+  padding: 18px 64px;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  color: #ffeedd;
+  letter-spacing: 8px;
+  cursor: pointer;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.15);
+  transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.menu-btn:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(180deg, #9a8666, #6a5a46);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.2);
+}
+
+.menu-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 3px 10px rgba(0,0,0,0.5), inset 0 2px 4px rgba(0,0,0,0.3);
+}
+
+/* ─── Mode Selection ─── */
+
+.menu-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 300px;
+}
+
+.mode-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: linear-gradient(180deg, #8a7656, #5a4a36);
+  border: 3px solid #a89070;
+  border-radius: 16px;
+  padding: 14px 20px;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: #ffeedd;
+  cursor: pointer;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.15);
+  transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.mode-btn:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(180deg, #9a8666, #6a5a46);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.2);
+}
+
+.mode-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 3px 10px rgba(0,0,0,0.5), inset 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.mode-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.mode-name {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 3px;
+}
+
+.mode-desc {
+  font-size: 0.7rem;
+  opacity: 0.75;
+  letter-spacing: 1px;
+  font-weight: 400;
+}
+
+/* ─── Game ─── */
+
+.game-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.canvas-container {
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.canvas-container canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+.hud-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 16px;
+}
+
+.hud-score {
+  pointer-events: auto;
+  background: linear-gradient(145deg, #4a4035, #3a3530);
+  border: 2px solid #6a5d4d;
+  border-radius: 14px;
+  padding: 8px 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 22px;
+  font-weight: bold;
+  color: #ffd700;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.coin-icon {
+  font-size: 26px;
+}
+
+.hud-distance {
+  pointer-events: auto;
+  background: linear-gradient(145deg, #4a4035, #3a3530);
+  border: 2px solid #6a5d4d;
+  border-radius: 14px;
+  padding: 8px 18px;
+  font-size: 13px;
+  color: #cdc0b0;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+  letter-spacing: 1.5px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.hud-distance strong {
+  font-size: 24px;
+  color: #fff;
+  margin: 0 4px;
+}
+
+.joystick-area {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.joystick-base {
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(90, 83, 72, 0.25) 0%, rgba(58, 53, 48, 0.15) 100%);
+  border: 1.5px solid rgba(106, 93, 77, 0.3);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.joystick-base.joystick-active {
+  background: radial-gradient(circle, rgba(90, 83, 72, 0.4) 0%, rgba(58, 53, 48, 0.25) 100%);
+  border-color: rgba(106, 93, 77, 0.5);
+}
+
+.joystick-knob {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, rgba(160, 148, 130, 0.6), rgba(90, 80, 68, 0.5));
+  border: 1.5px solid rgba(140, 128, 110, 0.4);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: transform 0.05s ease-out;
+  pointer-events: none;
+}
