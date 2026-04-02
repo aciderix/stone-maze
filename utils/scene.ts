@@ -3,7 +3,7 @@ declare const THREE: any;
 import { GameState, MazeSizeConfig } from '../types';
 import { generateMaze, getOpenCells } from './maze';
 import { createStoneWallTexture, createFloorTexture, createBallTexture } from './textures';
-import { addIvy, addGrass, addMenuIvy, addMenuGrass, simulateIvyForRegion, buildIvyMeshesReturn, buildScatterLeavesReturn, computeGrassInRegion, buildGrassMeshReturn } from './vegetation';
+import { addMenuIvy, addMenuGrass, simulateIvyForRegion, buildIvyMeshesDirectional, buildScatterLeavesDirectional, computeGrassInRegion, buildGrassMeshReturn, DirectionalMeshGroup } from './vegetation';
 import { MENU_MAZE } from './menuMazeData';
 
 // ─── Constants ───
@@ -69,8 +69,26 @@ interface VegChunk {
   centerX: number;
   centerZ: number;
   ivyRoots: any[] | null;
-  meshes: any[];
+  top: any[];      // above wall — always visible
+  posX: any[];     // east-facing walls
+  negX: any[];     // west-facing walls
+  posZ: any[];     // south-facing walls
+  negZ: any[];     // north-facing walls
+  ground: any[];   // grass
   state: 'none' | 'scatter' | 'full';
+}
+
+function getAllVegMeshes(vc: VegChunk): any[] {
+  return [...vc.top, ...vc.posX, ...vc.negX, ...vc.posZ, ...vc.negZ, ...vc.ground];
+}
+
+function clearVegChunkMeshes(vc: VegChunk, scene: any): void {
+  for (const m of getAllVegMeshes(vc)) {
+    scene.remove(m);
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) m.material.dispose();
+  }
+  vc.top = []; vc.posX = []; vc.negX = []; vc.posZ = []; vc.negZ = []; vc.ground = [];
 }
 
 // ═══════════════════════════════════════════════
@@ -262,28 +280,40 @@ export function createScene(
 
   buildFloor(scene, mazeW, mazeH);
 
-  // Vegetation
-  let vegChunks: VegChunk[] | null = null;
-  if (isColossal) {
-    // Chunked vegetation with 3 zones (managed in animation loop)
-    vegChunks = [];
+  // Vegetation — unified directional chunk system for all maze types
+  const vegChunks: VegChunk[] = [];
+  {
     for (let cz = 0; cz < mazeH; cz += VEG_CHUNK_SIZE) {
       for (let cx = 0; cx < mazeW; cx += VEG_CHUNK_SIZE) {
         const eX = Math.min(cx + VEG_CHUNK_SIZE, mazeW);
         const eZ = Math.min(cz + VEG_CHUNK_SIZE, mazeH);
-        vegChunks.push({
+        const vc: VegChunk = {
           startX: cx, startZ: cz, endX: eX, endZ: eZ,
           centerX: (cx + eX - 1) / 2,
           centerZ: (cz + eZ - 1) / 2,
           ivyRoots: null,
-          meshes: [],
+          top: [], posX: [], negX: [], posZ: [], negZ: [], ground: [],
           state: 'none',
-        });
+        };
+
+        if (!isColossal) {
+          // Pre-generate full directional ivy for tuto/défi
+          vc.ivyRoots = simulateIvyForRegion(maze, mazeW, mazeH, WALL_HEIGHT, cx, cz, eX, eZ);
+          const dir = buildIvyMeshesDirectional(vc.ivyRoots, WALL_HEIGHT);
+          vc.top = dir.top; vc.posX = dir.posX; vc.negX = dir.negX;
+          vc.posZ = dir.posZ; vc.negZ = dir.negZ;
+          for (const m of [...vc.top, ...vc.posX, ...vc.negX, ...vc.posZ, ...vc.negZ]) scene.add(m);
+
+          const grassPos = computeGrassInRegion(maze, mazeW, mazeH, cx, cz, eX, eZ);
+          const grassMesh = buildGrassMeshReturn(grassPos);
+          if (grassMesh) { scene.add(grassMesh); vc.ground = [grassMesh]; }
+
+          vc.state = 'full';
+        }
+
+        vegChunks.push(vc);
       }
     }
-  } else {
-    addIvy(scene, maze, mazeW, mazeH, WALL_HEIGHT);
-    addGrass(scene, maze, mazeW, mazeH);
   }
 
   // ─── Ball ───
@@ -523,66 +553,83 @@ export function createScene(
       uBallPos.value.copy(ball.position);
     }
 
-    // ─── Vegetation chunks (colossal) with frustum culling ───
-    if (vegChunks) {
-      let heavyGenCount = 0; // max 3 full ivy gens per frame (16×16 chunks are fast)
+    // ─── Vegetation chunks (all maze types) with directional face culling ───
+    {
+      let heavyGenCount = 0;
       const pbx = ball.position.x, pbz = ball.position.z;
+      const chunkHalf = VEG_CHUNK_SIZE * 0.5;
+
       for (let vi = 0; vi < vegChunks.length; vi++) {
         const vc = vegChunks[vi];
         const vdx = pbx - vc.centerX;
         const vdz = pbz - vc.centerZ;
         const vdist = Math.sqrt(vdx * vdx + vdz * vdz);
 
-        // Disposal always runs regardless of frustum (memory management)
-        if (vdist >= VEG_DISPOSE_DIST) {
+        // Colossal: disposal of distant chunks (memory management)
+        if (isColossal && vdist >= VEG_DISPOSE_DIST) {
           if (vc.state !== 'none') {
-            for (const m of vc.meshes) { scene.remove(m); if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); }
-            vc.meshes = [];
+            clearVegChunkMeshes(vc, scene);
             vc.state = 'none';
-            // ivyRoots stay cached for instant rebuild
           }
           continue;
         }
 
-        // Frustum culling: skip generation & hide chunks outside camera view
+        // Frustum culling
         _cullSphere.center.set(vc.centerX, WALL_HEIGHT * 0.5, vc.centerZ);
         _cullSphere.radius = VEG_CHUNK_SIZE * 0.72;
         if (!_frustum.intersectsSphere(_cullSphere)) {
-          for (const m of vc.meshes) m.visible = false;
+          for (const m of getAllVegMeshes(vc)) m.visible = false;
           continue;
         }
 
-        if (vdist < VEG_ZONE1_DIST) {
-          // Zone 1: Full ivy + branches + grass
-          if (vc.state !== 'full' && heavyGenCount < 3) {
-            // Dispose existing scatter meshes
-            for (const m of vc.meshes) { scene.remove(m); if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); }
-            vc.meshes = [];
-            // Simulate ivy if not cached
+        // Colossal: lazy generation
+        if (isColossal) {
+          if (vdist < VEG_ZONE1_DIST && vc.state !== 'full' && heavyGenCount < 3) {
+            clearVegChunkMeshes(vc, scene);
             if (!vc.ivyRoots) {
               vc.ivyRoots = simulateIvyForRegion(maze, mazeW, mazeH, WALL_HEIGHT, vc.startX, vc.startZ, vc.endX, vc.endZ);
             }
-            // Build full meshes
-            const ivyMeshes = buildIvyMeshesReturn(vc.ivyRoots);
-            for (const m of ivyMeshes) { scene.add(m); vc.meshes.push(m); }
+            const dir = buildIvyMeshesDirectional(vc.ivyRoots, WALL_HEIGHT);
+            vc.top = dir.top; vc.posX = dir.posX; vc.negX = dir.negX;
+            vc.posZ = dir.posZ; vc.negZ = dir.negZ;
+            for (const m of [...vc.top, ...vc.posX, ...vc.negX, ...vc.posZ, ...vc.negZ]) scene.add(m);
             const grassPos = computeGrassInRegion(maze, mazeW, mazeH, vc.startX, vc.startZ, vc.endX, vc.endZ);
             const grassMesh = buildGrassMeshReturn(grassPos);
-            if (grassMesh) { scene.add(grassMesh); vc.meshes.push(grassMesh); }
+            if (grassMesh) { scene.add(grassMesh); vc.ground = [grassMesh]; }
             vc.state = 'full';
             heavyGenCount++;
-          }
-          for (const m of vc.meshes) m.visible = true;
-        } else if (vdist < VEG_ZONE2_DIST) {
-          // Zone 2: Scatter leaves (cheap)
-          if (vc.state === 'none') {
-            const scatter = buildScatterLeavesReturn(maze, mazeW, mazeH, WALL_HEIGHT, vc.startX, vc.startZ, vc.endX, vc.endZ);
-            if (scatter) { scene.add(scatter); vc.meshes.push(scatter); }
+          } else if (vdist < VEG_ZONE2_DIST && vc.state === 'none') {
+            const dir = buildScatterLeavesDirectional(maze, mazeW, mazeH, WALL_HEIGHT, vc.startX, vc.startZ, vc.endX, vc.endZ);
+            vc.top = dir.top; vc.posX = dir.posX; vc.negX = dir.negX;
+            vc.posZ = dir.posZ; vc.negZ = dir.negZ;
+            for (const m of [...vc.top, ...vc.posX, ...vc.negX, ...vc.posZ, ...vc.negZ]) scene.add(m);
             vc.state = 'scatter';
           }
-          for (const m of vc.meshes) m.visible = true;
+        }
+
+        if (vc.state === 'none') continue;
+
+        // ─── Directional face culling ───
+        // Top: always visible when chunk is in view
+        for (const m of vc.top) m.visible = true;
+
+        if (vdist < VEG_ZONE1_DIST) {
+          // Close: show camera-facing wall faces + ground
+          const camToX = camPos.x - vc.centerX;
+          const camToZ = camPos.z - vc.centerZ;
+
+          for (const m of vc.posX) m.visible = camToX > -chunkHalf;
+          for (const m of vc.negX) m.visible = camToX < chunkHalf;
+          for (const m of vc.posZ) m.visible = camToZ > -chunkHalf;
+          for (const m of vc.negZ) m.visible = camToZ < chunkHalf;
+          for (const m of vc.ground) m.visible = true;
         } else {
-          // Between Zone 2 and dispose: hide
-          for (const m of vc.meshes) m.visible = false;
+          // Far: only top visible (wall faces hidden — can't see through walls)
+          for (const m of vc.posX) m.visible = false;
+          for (const m of vc.negX) m.visible = false;
+          for (const m of vc.posZ) m.visible = false;
+          for (const m of vc.negZ) m.visible = false;
+          for (const m of vc.ground) m.visible = false;
         }
       }
     }
@@ -657,11 +704,8 @@ export function createScene(
   return () => {
     cancelAnimationFrame(animId);
     // Dispose vegetation chunks
-    if (vegChunks) {
-      for (const vc of vegChunks) {
-        for (const m of vc.meshes) { scene.remove(m); if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); }
-        vc.meshes = [];
-      }
+    for (const vc of vegChunks) {
+      clearVegChunkMeshes(vc, scene);
     }
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
