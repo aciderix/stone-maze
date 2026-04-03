@@ -1,4 +1,5 @@
 declare const THREE: any;
+import { dissolveFragment } from '../shaders/dissolveGLSL';
 
 // ─── Ball-position dissolve for vegetation ─────────────────────
 let _uBallPos: { value: any } | null = null;
@@ -32,34 +33,12 @@ vVegNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
     );
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <dithering_fragment>',
-      `#include <dithering_fragment>
-// ── skipDissolve: same rule as walls ──
-// Vegetation on corridor walls facing the camera near the ball → keep visible
-vec3 toBall = normalize(uBallPos - vVegWorldPos);
-vec3 toCam  = normalize(cameraPosition - vVegWorldPos);
-float distToBall = length(vVegWorldPos - uBallPos);
-bool isVerticalFace = abs(vVegNormal.y) < 0.3;
-bool skipDissolve = false;
-if (isVerticalFace && dot(vVegNormal, toBall) > 0.0 && dot(vVegNormal, toCam) > 0.0 && distToBall < 3.5) {
-  skipDissolve = true;
-}
-if (!skipDissolve) {
-  vec3 rvec = uBallPos - cameraPosition;
-  float rlen = length(rvec);
-  vec3 rdir = rvec / max(rlen, 0.001);
-  float t = dot(vVegWorldPos - cameraPosition, rdir);
-  vec3 closest = cameraPosition + rdir * clamp(t, 0.0, rlen);
-  float d = length(vVegWorldPos - closest);
-  float coreR = 0.3;
-  float edgeR = 1.0;
-  if (d < coreR) {
-    discard;
-  } else if (d < edgeR) {
-    float dissolve = 1.0 - smoothstep(coreR, edgeR, d);
-    float pat = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
-    if (pat < dissolve) discard;
-  }
-}`
+      `#include <dithering_fragment>\n` + dissolveFragment({
+        worldPos: 'vVegWorldPos',
+        normalExpr: 'vVegNormal',
+        coreR: 0.30,
+        edgeR: 1.00
+      })
     );
   };
 }

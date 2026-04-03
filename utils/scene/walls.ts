@@ -3,6 +3,7 @@ import { CHUNK_SIZE } from './constants';
 import type { WallGeoResult, WallData, ChunkWallData } from './types';
 import { computeHeightGrid } from './heightGrid';
 import { createStoneWallTexture } from '../textures';
+import { dissolveFragment } from '../shaders/dissolveGLSL';
 
 export function createWallMaterial(uBallPos: { value: any }): any {
   const wallTex = createStoneWallTexture();
@@ -24,37 +25,13 @@ export function createWallMaterial(uBallPos: { value: any }): any {
     );
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <dithering_fragment>',
-      `#include <dithering_fragment>
-      if (vInstanceAlpha < 0.99) {
-        vec3 faceN = normalize(vWallWorldNormal);
-        bool isVerticalFace = abs(faceN.y) < 0.3;
-        bool skipDissolve = false;
-        if (isVerticalFace) {
-          vec3 toBall = normalize(uBallPos - vWallWorldPos);
-          vec3 toCam = normalize(cameraPosition - vWallWorldPos);
-          float distToBall = length(vWallWorldPos - uBallPos);
-          if (dot(faceN, toBall) > 0.0 && dot(faceN, toCam) > 0.0 && distToBall < 3.5) {
-            skipDissolve = true;
-          }
-        }
-        if (!skipDissolve) {
-          vec3 rayVec = uBallPos - cameraPosition;
-          float rayLen = length(rayVec);
-          vec3 rayDir = rayVec / max(rayLen, 0.001);
-          float t = dot(vWallWorldPos - cameraPosition, rayDir);
-          vec3 closest = cameraPosition + rayDir * clamp(t, 0.0, rayLen);
-          float dist = length(vWallWorldPos - closest);
-          float coreR = 0.25;
-          float edgeR = 0.85;
-          if (dist < coreR) {
-            discard;
-          } else if (dist < edgeR) {
-            float dissolve = 1.0 - smoothstep(coreR, edgeR, dist);
-            float pattern = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
-            if (pattern < dissolve) discard;
-          }
-        }
-      }`
+      `#include <dithering_fragment>\n` + dissolveFragment({
+        worldPos: 'vWallWorldPos',
+        normalExpr: 'normalize(vWallWorldNormal)',
+        coreR: 0.25,
+        edgeR: 0.85,
+        guard: 'vInstanceAlpha < 0.99'
+      })
     );
   };
 
