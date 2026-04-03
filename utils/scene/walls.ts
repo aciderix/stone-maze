@@ -7,9 +7,9 @@ import { dissolveFragment } from '../shaders/dissolveGLSL';
 
 // ─── Constants ───
 const VARIANT_COUNT = 4;
-const SUB_SEGS = 4;            // subdivisions per quad axis (4×4 = 16 sub-quads)
-const DISPLACEMENT_SCALE = 0.06;
-const DISPLACEMENT_BIAS = -0.045;
+const SUB_SEGS = 8;            // subdivisions per quad axis (8×8 = 64 sub-quads per face)
+const DISPLACEMENT_SCALE = 0.15; // matches the PBR visualizer default
+const DISPLACEMENT_BIAS = 0;
 const LOD_NEAR = 8.0;          // full displacement within this distance
 const LOD_FAR = 30.0;          // zero displacement beyond this distance
 
@@ -36,7 +36,7 @@ export function createWallMaterial(uBallPos: { value: any }): any {
     normalScale: new THREE.Vector2(1.0, 1.0),
     roughnessMap: pbr.roughness,
     roughness: 1.0,       // modulated by roughnessMap
-    metalness: 0.02,
+    metalness: 0.0,
     displacementMap: pbr.height,
     displacementScale: DISPLACEMENT_SCALE,
     displacementBias: DISPLACEMENT_BIAS,
@@ -70,12 +70,13 @@ vWallWorldNormal = normalize(normalMatrix * objectNormal);`
     );
 
     // 3. LOD displacement: fade out with distance from camera
+    // Three.js r150 uses vUv for displacement sampling (vDisplacementMapUv is r152+)
     shader.vertexShader = shader.vertexShader.replace(
       '#include <displacementmap_vertex>',
       `#ifdef USE_DISPLACEMENTMAP
   float camDist = length((modelViewMatrix * vec4(transformed, 1.0)).xyz);
   float lodFade = 1.0 - smoothstep(uLodNear, uLodFar, camDist);
-  transformed += normalize(objectNormal) * (texture2D(displacementMap, vDisplacementMapUv).x * displacementScale * lodFade + displacementBias * lodFade);
+  transformed += normalize(objectNormal) * (texture2D(displacementMap, vUv).x * displacementScale * lodFade + displacementBias * lodFade);
 #endif`
     );
 
